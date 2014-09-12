@@ -1,0 +1,78 @@
+#!/bin/sh
+
+# Jolla btrfs repair and mount script
+#
+# Copyright (C) 2014 Jolla Ltd.
+# Contact: Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+print_help() {
+    echo "Usage: $0 <device> <mount-directory>"
+    echo "       device          - btrfs device to be repaired and mounted"
+    echo "       mount-directory - where to mount the device"
+    echo "NOTE:  If repair is succesful, device will be left mounted in"
+    echo "       mount-directory"
+}
+
+if [ -z $1 ] || [ ! -e $1 ]; then
+    echo "Invalid device: \"$1\""
+    print_help
+    exit 1
+else
+    ROOTDEV=$1
+fi
+
+if [ -z $2 ] || [ ! -e $2 ]; then
+    echo "Invalid mount-directory: \"$2\""
+    print_help
+    exit 1
+else
+    TARGET=$2
+fi
+
+# First try simple clearing of the free space cache
+if mount -t btrfs -o recovery,nospace_cache,clear_cache,autodefrag $ROOTDEV $TARGET; then
+    echo "Root mounted with recovery options"
+    exit 0
+fi
+# in case FS got mounted as read-only..
+umount $TARGET
+
+# Try normal btrfs check repair
+btrfs check --repair $ROOTDEV
+if mount -t btrfs -o recovery,clear_cache,autodefrag $ROOTDEV $TARGET; then
+    echo "Root mounted after repair"
+    exit 0
+fi
+umount $TARGET
+
+# Try rebuilding checksum tree
+btrfs check --init-csum-tree $ROOTDEV
+if mount -t btrfs -o recovery,clear_cache,autodefrag $ROOTDEV $TARGET; then
+    echo "Root mounted after rebuilding btrfs checksum tree"
+    exit 0
+fi
+umount $TARGET
+
+# Try rebuilding the extent tree, this takes the longest time.
+btrfs check --init-extent-tree $ROOTDEV
+if mount -t btrfs -o recovery,clear_cache,autodefrag $ROOTDEV $TARGET; then
+    echo "Root mounted after rebuilding btrfs extent tree"
+    exit 0
+fi
+
+echo "Failed to repair and mount $ROOTDEV"
+exit 1
