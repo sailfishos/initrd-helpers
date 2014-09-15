@@ -6,7 +6,7 @@ Group:      System/Boot
 License:    GPLv2
 Source0:    %{name}-%{version}.tar.gz
 
-Requires:  btrfs
+Requires:  btrfs-progs
 
 %description
 %{summary}
