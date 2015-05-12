@@ -30,3 +30,15 @@ Examples:
        # export SFOS_DEV=$(find-mmc-bypartlabel sailfishos)
        # echo $SFOS_DEV
        /dev/mmcblk0p14
+
+factory-reset-lvm - Tool for running factory reset for LVM based file systems
+
+Usage: factory-reset-lvm <root-size> <reserve-size>
+       root-size       - size of root LV in MB
+       reserve-size    - space in MB to be left unallocated for future use
+
+NOTE:  The script will need a "fimage" partition with /Sailfish-<version>/
+       folder that contains sailfish_root.squashfs.img and
+       sailfish_home.squashfs.img loop image files for root and home factory
+       content.
+
