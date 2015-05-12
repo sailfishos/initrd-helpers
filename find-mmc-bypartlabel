@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Tool for finding mmc device node path based on it's part label.
+#
+# Copyright (C) 2015 Jolla Ltd.
+# Contact: Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2
+# of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+# Pass the partition label name as $1
+if test -z $1; then
+	echo "$0: Error, no label name given!" > /dev/kmsg
+	exit 1
+fi
+
+if ! test -d /sys/class/block; then
+	echo "$0: Error, please mount sysfs" > /dev/kmsg
+	exit 1
+fi
+
+for mmc_sysfs in $(ls -d /sys/class/block/mmcblk0p*); do
+	if cat $mmc_sysfs/uevent | grep -w PARTNAME=$1 > /dev/null; then
+		FIMAGE_DEV_NAME=$(echo $mmc_sysfs | cut -d "/" -f 5)
+		echo "/dev/$FIMAGE_DEV_NAME"
+		exit 0
+	fi
+done
+
+echo "$0: Error, could not find partition label \"$1\"" > /dev/kmsg
+exit 1

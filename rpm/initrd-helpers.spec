@@ -20,10 +20,12 @@ Requires:  btrfs-progs
 %install
 mkdir -p %{buildroot}/sbin/
 install -D -m 755 btrfs-mount-repair %{buildroot}/sbin/btrfs-mount-repair
+install -D -m 755 find-mmc-bypartlabel %{buildroot}/sbin/find-mmc-bypartlabel
 
 %files
 %defattr(-,root,root,-)
 /sbin/btrfs-mount-repair
+/sbin/find-mmc-bypartlabel
 
 %doc LICENSE README
 

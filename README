@@ -16,3 +16,17 @@ NOTE:  If repair is succesful, device will be left mounted in
        mount-directory
 
 
+find-mmc-bypartlabel - Tool for finding MMC device node by it's partition label
+
+Usage: find-mmc-bypartlabel <label-name>
+       label-name      - Labeled name of the partition
+NOTE:  If mmc device with that partition label is found the device node path
+       is printed
+
+Examples:
+       # find-mmc-bypartlabel sailfishos
+       /dev/mmcblk0p14
+
+       # export SFOS_DEV=$(find-mmc-bypartlabel sailfishos)
+       # echo $SFOS_DEV
+       /dev/mmcblk0p14
