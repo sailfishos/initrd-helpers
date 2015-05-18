@@ -1,5 +1,12 @@
 Initrd-helpers contains scripts and tools that can be used in init ramdisks.
 
+General guidelines for initrd helper scripts:
+
+* All debug / error / warning / info prints should be passed to /dev/kmsg
+* This way problems can be seen from journal or dmesg if device booted up
+
+The tools:
+
 btrfs-mount-repair - Btrfs mounting script with automatic repair operations
 
 Usage: ./btrfs-mount-repair <device> <mount-directory>
@@ -8,4 +15,30 @@ Usage: ./btrfs-mount-repair <device> <mount-directory>
 NOTE:  If repair is succesful, device will be left mounted in
        mount-directory
 
+
+find-mmc-bypartlabel - Tool for finding MMC device node by it's partition label
+
+Usage: find-mmc-bypartlabel <label-name>
+       label-name      - Labeled name of the partition
+NOTE:  If mmc device with that partition label is found the device node path
+       is printed
+
+Examples:
+       # find-mmc-bypartlabel sailfishos
+       /dev/mmcblk0p14
+
+       # export SFOS_DEV=$(find-mmc-bypartlabel sailfishos)
+       # echo $SFOS_DEV
+       /dev/mmcblk0p14
+
+factory-reset-lvm - Tool for running factory reset for LVM based file systems
+
+Usage: factory-reset-lvm <root-size> <reserve-size>
+       root-size       - size of root LV in MB
+       reserve-size    - space in MB to be left unallocated for future use
+
+NOTE:  The script will need a "fimage" partition with /Sailfish-<version>/
+       folder that contains sailfish_root.squashfs.img and
+       sailfish_home.squashfs.img loop image files for root and home factory
+       content.
 

@@ -1,0 +1,155 @@
+#!/bin/sh
+#
+# Factory reset tool for LVM based Sailfish OS filesystems.
+#
+# Copyright (C) 2015 Jolla Ltd.
+# Contact: Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2
+# of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+# Parameters:
+# $1 -> Root size in MB
+# $2 -> Reserve space for later use in MB
+
+ROOTDEV="/dev/sailfish/root"
+HOMEDEV="/dev/sailfish/home"
+NAME=$0
+
+flash_firmwares()
+{
+	echo "$NAME: TODO, IMPLEMENT FIRMWARE FLASHING" > /dev/kmsg
+}
+
+if test -z $1 || ! test $1 -ge 0; then
+	echo "$NAME: Please pass root size in MB as parameter!" > /dev/kmsg
+	exit 1
+fi
+
+if test -z $2 || ! test $2 -ge 0; then
+	echo "$NAME: Please pass reserve size in MB as parameter!" > /dev/kmsg
+	exit 1
+fi
+
+ROOT_SIZE=$1
+RESERVE_KB=$(expr $2 \* 1024)
+
+echo "$NAME: Starting factory reset.." > /dev/kmsg
+
+PHYSDEV=$(find-mmc-bypartlabel "sailfishos")
+if test $? != "0"; then
+	echo "$NAME: Error: could not find sailfishos partition" > /dev/kmsg
+	exit 1
+fi
+
+FIMAGE_DEV_PATH=$(find-mmc-bypartlabel "fimage")
+if test $? != "0"; then
+	echo "$NAME: Error: could not find fimage partition" > /dev/kmsg
+	exit 1
+fi
+
+echo "$NAME: fimage partition in $FIMAGE_DEV_PATH" > /dev/kmsg
+
+FIMAGE_MOUNT=$(mktemp -d)
+if ! mount "$FIMAGE_DEV_PATH" "$FIMAGE_MOUNT"; then
+	echo "$NAME: Error, could not mount fimage for factory reset!" > /dev/kmsg
+	rmdir $FIMAGE_MOUNT
+	exit 1
+fi
+
+MOUNT_POINT=$(mktemp -d)
+
+# Clean up old LVM if it happens to exist
+lvm vgchange -a n
+lvm vgremove -y sailfish
+lvm pvremove -y $PHYSDEV
+
+# Create the LVM setup
+if ! lvm pvcreate $PHYSDEV; then
+	echo "$NAME: Error, could create LVM physical device for $PHYSDEV" > /dev/kmsg
+	exit 1
+fi
+
+# If the PV exists, creating VG should never fail
+lvm vgcreate sailfish $PHYSDEV
+
+# Checking for errors to maybe catch wrong root size parameter
+if ! lvm lvcreate -L "$ROOT_SIZE"M --name root sailfish; then
+	echo "$NAME: Error, could create root LV" > /dev/kmsg
+	exit 1
+fi
+
+
+# Calculate home size
+FREE_EXTENTS=$(lvm vgdisplay sailfish -c | cut -d ":" -f 16)
+EXTENT_SIZE=$(lvm vgdisplay sailfish -c | cut -d ":" -f 13)
+FREE_KB=$(expr $FREE_EXTENTS \* $EXTENT_SIZE)
+HOME_SIZE=$(expr $FREE_KB - $RESERVE_KB)
+
+# Check for too big reserve (not enough room left for home) case (1024kB * 64 = 64MB)
+if test $HOME_SIZE -le 65536; then
+	echo "$NAME: Error: too big reserve, not enough space for home" > /dev/kmsg
+	exit 1
+fi
+
+# Create home LV
+lvm lvcreate -L "$HOME_SIZE"K --name home sailfish
+
+# Create filesystems
+mkfs.ext4 $ROOTDEV
+mkfs.ext4 $HOMEDEV
+
+# Start restoring Sailfish OS from the factory images
+mount $ROOTDEV $MOUNT_POINT
+mkdir -p $MOUNT_POINT/home
+mount $HOMEDEV $MOUNT_POINT/home
+TEMPMOUNT=$(mktemp -d)
+# Find the biggest versioned Sailfish folder and use that
+SAILFISH_FIMAGE=$(ls -d $FIMAGE_MOUNT/Sailfish* | tail -1)
+
+if test -z $SAILFISH_FIMAGE; then
+	echo "$NAME: Error: Could not find a recovery image folder!" > /dev/kmsg
+	exit 1
+fi
+
+if ! test -f $SAILFISH_FIMAGE/sailfish_root.squashfs.img; then
+	echo "$NAME: Error: cannot find sailfish root recovery image!" > /dev/kmsg
+	exit 1
+fi
+
+if ! test -f $SAILFISH_FIMAGE/sailfish_home.squashfs.img; then
+	echo "$NAME: Error: cannot find sailfish home recovery image!" > /dev/kmsg
+	exit 1
+fi
+
+mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_root.squashfs.img $TEMPMOUNT
+cp -a $TEMPMOUNT/* $MOUNT_POINT
+sync
+umount $TEMPMOUNT
+mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_home.squashfs.img $TEMPMOUNT
+cp -a $TEMPMOUNT/* $MOUNT_POINT/home
+sync
+umount $TEMPMOUNT
+rmdir $TEMPMOUNT
+
+# Flash firmwares
+flash_firmwares $MOUNT_POINT
+
+# Clean up
+umount $MOUNT_POINT/home
+umount $MOUNT_POINT
+rmdir $MOUNT_POINT
+
+umount $FIMAGE_MOUNT
+rmdir $FIMAGE_MOUNT
