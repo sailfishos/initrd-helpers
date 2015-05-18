@@ -28,7 +28,7 @@ print_help() {
 }
 
 if [ -z $1 ] || [ ! -e $1 ]; then
-    echo "Invalid device: \"$1\""
+    echo "$0: Invalid device: \"$1\"" > /dev/kmsg
     print_help
     exit 1
 else
@@ -36,7 +36,7 @@ else
 fi
 
 if [ -z $2 ] || [ ! -e $2 ]; then
-    echo "Invalid mount-directory: \"$2\""
+    echo "$0: Invalid mount-directory: \"$2\"" > /dev/kmsg
     print_help
     exit 1
 else
@@ -45,7 +45,7 @@ fi
 
 # First try simple clearing of the free space cache
 if mount -t btrfs -o recovery,nospace_cache,clear_cache,autodefrag $ROOTDEV $TARGET; then
-    echo "Root mounted with recovery options"
+    echo "$0: Root mounted with recovery options"  > /dev/kmsg
     exit 0
 fi
 # in case FS got mounted as read-only..
@@ -54,7 +54,7 @@ umount $TARGET
 # Try normal btrfs check repair
 btrfs check --repair $ROOTDEV
 if mount -t btrfs -o recovery,clear_cache,autodefrag $ROOTDEV $TARGET; then
-    echo "Root mounted after repair"
+    echo "$0: Root mounted after repair"  > /dev/kmsg
     exit 0
 fi
 umount $TARGET
@@ -62,7 +62,7 @@ umount $TARGET
 # Try rebuilding checksum tree
 btrfs check --init-csum-tree $ROOTDEV
 if mount -t btrfs -o recovery,clear_cache,autodefrag $ROOTDEV $TARGET; then
-    echo "Root mounted after rebuilding btrfs checksum tree"
+    echo "$0: Root mounted after rebuilding btrfs checksum tree"  > /dev/kmsg
     exit 0
 fi
 umount $TARGET
@@ -70,9 +70,9 @@ umount $TARGET
 # Try rebuilding the extent tree, this takes the longest time.
 btrfs check --init-extent-tree $ROOTDEV
 if mount -t btrfs -o recovery,clear_cache,autodefrag $ROOTDEV $TARGET; then
-    echo "Root mounted after rebuilding btrfs extent tree"
+    echo "$0 Root mounted after rebuilding btrfs extent tree"  > /dev/kmsg
     exit 0
 fi
 
-echo "Failed to repair and mount $ROOTDEV"
+echo "$0: Failed to repair and mount $ROOTDEV" > /dev/kmsg
 exit 1
