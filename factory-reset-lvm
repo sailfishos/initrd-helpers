@@ -27,9 +27,32 @@ ROOTDEV="/dev/sailfish/root"
 HOMEDEV="/dev/sailfish/home"
 NAME=$0
 
+flash_script()
+{
+cat << 'EOF'
+#!/bin/sh
+for SCRIPT in /var/lib/platform-updates/* ; do
+	if [ -x $SCRIPT ]; then
+		echo "$SCRIPT ... "
+		$SCRIPT && echo "OK" || echo "FAILED"
+	fi
+done
+EOF
+}
+
 flash_firmwares()
 {
-	echo "$NAME: TODO, IMPLEMENT FIRMWARE FLASHING" > /dev/kmsg
+	if test -z $1; then
+		echo "$NAME: No mount point given" > /dev/kmsg
+		exit 1
+	fi
+	mount -t tmpfs tmpfs $1/tmp
+	mount -t devtmpfs devtmpfs $1/dev
+	mount -t proc proc $1/proc
+	flash_script > $1/tmp/flash-firmwares
+	chmod 755 $1/tmp/flash-firmwares
+	chroot $1 /tmp/flash-firmwares
+	umount $1/tmp $1/dev $1/proc
 }
 
 if test -z $1 || ! test $1 -ge 0; then
@@ -143,7 +166,7 @@ sync
 umount $TEMPMOUNT
 rmdir $TEMPMOUNT
 
-# Flash firmwares
+# Flash firmwares from the resetted root
 flash_firmwares $MOUNT_POINT
 
 # Clean up
