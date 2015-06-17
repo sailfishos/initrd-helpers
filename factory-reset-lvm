@@ -70,9 +70,9 @@ RESERVE_KB=$(expr $2 \* 1024)
 
 echo "$NAME: Starting factory reset.." > /dev/kmsg
 
-PHYSDEV=$(find-mmc-bypartlabel "sailfishos")
+PHYSDEV=$(find-mmc-bypartlabel "sailfish")
 if test $? != "0"; then
-	echo "$NAME: Error: could not find sailfishos partition" > /dev/kmsg
+	echo "$NAME: Error: could not find sailfish partition" > /dev/kmsg
 	exit 1
 fi
 
