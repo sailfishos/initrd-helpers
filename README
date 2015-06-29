@@ -42,3 +42,21 @@ NOTE:  The script will need a "fimage" partition with /Sailfish-<version>/
        sailfish_home.squashfs.img loop image files for root and home factory
        content.
 
+lvm-luks-convert - Tool for converting a normal LV to a LUKS encrypted LV
+
+Usage: lvm-luks-convert [OPTIONS] LVPATH
+
+  Description:
+      lvm-luks-convert is a tool to convert a unencrypted
+      Logical Volume (LV) in a LVM based file system to a
+      LUKS encrypted LV.
+
+      NOTE: Only ext4 supported.
+
+  PARAMETERS:
+      LVPATH     Absolute path of LV device node. E.g. /dev/sailfish-vg/home
+
+  OPTIONS:
+      -p <pass>  Specify passphrase to use for LUKS encrypted LV.
+                 If omitted, default is "$PASSPHRASE"
+      -h         Print this help.
