@@ -8,6 +8,10 @@ Source0:    %{name}-%{version}.tar.gz
 
 Requires:  btrfs-progs
 Requires:  e2fsprogs
+Requires:  findutils
+Requires:  cryptsetup-luks
+Requires:  lvm2
+Requires:  rsync
 
 %description
 %{summary}
@@ -23,12 +27,14 @@ mkdir -p %{buildroot}/sbin/
 install -D -m 755 btrfs-mount-repair %{buildroot}/sbin/btrfs-mount-repair
 install -D -m 755 factory-reset-lvm %{buildroot}/sbin/factory-reset-lvm
 install -D -m 755 find-mmc-bypartlabel %{buildroot}/sbin/find-mmc-bypartlabel
+install -D -m 755 lvm-luks-convert %{buildroot}/sbin/lvm-luks-convert
 
 %files
 %defattr(-,root,root,-)
 /sbin/btrfs-mount-repair
 /sbin/factory-reset-lvm
 /sbin/find-mmc-bypartlabel
+/sbin/lvm-luks-convert
 
 %doc LICENSE README
 
