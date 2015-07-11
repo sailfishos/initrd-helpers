@@ -91,6 +91,24 @@ if ! mount "$FIMAGE_DEV_PATH" "$FIMAGE_MOUNT"; then
 	exit 1
 fi
 
+# Find the biggest versioned Sailfish folder and use that
+SAILFISH_FIMAGE=$(ls -d $FIMAGE_MOUNT/Sailfish* | tail -1)
+
+if test -z $SAILFISH_FIMAGE; then
+	echo "$NAME: Error: Could not find a recovery image folder!" > /dev/kmsg
+	exit 1
+fi
+
+if ! test -f $SAILFISH_FIMAGE/sailfish_root.squashfs.img; then
+	echo "$NAME: Error: cannot find sailfish root recovery image!" > /dev/kmsg
+	exit 1
+fi
+
+if ! test -f $SAILFISH_FIMAGE/sailfish_home.squashfs.img; then
+	echo "$NAME: Error: cannot find sailfish home recovery image!" > /dev/kmsg
+	exit 1
+fi
+
 MOUNT_POINT=$(mktemp -d)
 
 # Clean up old LVM if it happens to exist
@@ -138,23 +156,6 @@ mount $ROOTDEV $MOUNT_POINT
 mkdir -p $MOUNT_POINT/home
 mount $HOMEDEV $MOUNT_POINT/home
 TEMPMOUNT=$(mktemp -d)
-# Find the biggest versioned Sailfish folder and use that
-SAILFISH_FIMAGE=$(ls -d $FIMAGE_MOUNT/Sailfish* | tail -1)
-
-if test -z $SAILFISH_FIMAGE; then
-	echo "$NAME: Error: Could not find a recovery image folder!" > /dev/kmsg
-	exit 1
-fi
-
-if ! test -f $SAILFISH_FIMAGE/sailfish_root.squashfs.img; then
-	echo "$NAME: Error: cannot find sailfish root recovery image!" > /dev/kmsg
-	exit 1
-fi
-
-if ! test -f $SAILFISH_FIMAGE/sailfish_home.squashfs.img; then
-	echo "$NAME: Error: cannot find sailfish home recovery image!" > /dev/kmsg
-	exit 1
-fi
 
 mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_root.squashfs.img $TEMPMOUNT
 cp -a $TEMPMOUNT/* $MOUNT_POINT
