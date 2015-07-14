@@ -157,11 +157,11 @@ if ! test -f $SAILFISH_FIMAGE/sailfish_home.squashfs.img; then
 fi
 
 mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_root.squashfs.img $TEMPMOUNT
-cp -a $TEMPMOUNT/* $MOUNT_POINT
+rsync -a -H -A -X $TEMPMOUNT/* $MOUNT_POINT
 sync
 umount $TEMPMOUNT
 mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_home.squashfs.img $TEMPMOUNT
-cp -a $TEMPMOUNT/* $MOUNT_POINT/home
+rsync -a -H -A -X $TEMPMOUNT/* $MOUNT_POINT/home
 sync
 umount $TEMPMOUNT
 rmdir $TEMPMOUNT
