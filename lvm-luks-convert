@@ -1,0 +1,249 @@
+#!/bin/sh
+
+# Tool to convert unencrypted LV into a LUKS encrypted LV
+#
+# Copyright (C) 2014 Jolla Ltd.
+# Contact: Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+#
+# Design
+#
+# The tool simply reduces existing user given LV to minimum size and uses
+# the freed up space to create a new LUKS encrypted LV where it rsyncs
+# everything that fits there. If space runs out, a new shrink-extend-rsync
+# loop is conducted until everything has been moved over to the encrypted
+# LV. Finally the old LV is removed and the new encrypted LV is renamed as
+# the old LV. Now your LV has been effectively LUKS encrypted.
+#
+
+# Just exit on error.
+set -e
+
+PASSPHRASE="Sailfish OS shall rule the world!"
+
+TEMPLV="luksconvert"
+TEMPLVPATH=""
+
+SRCLVPATH=""
+SRCLV=""
+SRCVG=""
+
+CRYPTONAME="temp-crypt"
+CRYPTODEV="/dev/mapper/$CRYPTONAME"
+
+pr_err()
+{
+	printf "Error: %s\n" "$1" 1>&2
+}
+
+# TODO: Consider adding these operations to options
+#
+#      -r         Reverse operation: unencrypt a LUKS LV
+#                 NOTE: -p option must be provided OR LUKS password
+#                 must be set to "$PASSPHRASE" before calling.
+#      -f         Force. Skip all safety checks and just run the conversion.
+#      -c <opts>  Cipher options to pass to cryptsetup luksCreate command.
+#
+print_help()
+{
+cat << EOF
+Usage: lvm-luks-convert [OPTIONS] LVPATH
+
+  Description:
+      lvm-luks-convert is a tool to convert a unencrypted
+      Logical Volume (LV) in a LVM based file system to a
+      LUKS encrypted LV.
+
+      NOTE: Only ext4 supported.
+
+  PARAMETERS:
+      LVPATH     Absolute path of LV device node. E.g. /dev/sailfish-vg/home
+
+  OPTIONS:
+      -p <pass>  Specify passphrase to use for LUKS encrypted LV.
+                 If omitted, default is "$PASSPHRASE"
+      -h         Print this help.
+
+EOF
+}
+
+fill_lvm_params()
+{
+	if ! test -b "$1"; then
+		pr_err "\"$1\" is not a valid LVM device node"
+		print_help
+		exit 1
+	fi
+	if ! echo "$1" | cut -c1-5 | grep "/dev/"; then
+		pr_err "Source LV path must start with \"/dev/\""
+		exit 1
+	fi
+
+	SRCLVPATH="$1"
+
+	# Expecting here we have "/dev/vgname/lvname" type of input
+	SRCVG=$(echo "$1" | cut -d '/' -f 3)
+	SRCLV=$(echo "$1" | cut -d '/' -f 4)
+
+	TEMPLVPATH="/dev/$SRCVG/$TEMPLV"
+}
+
+# Prints out size of $1 in bytes
+get_ext4_size()
+{
+	local BLOCKS=""
+	local BSIZE=""
+
+	if ! test -b "$1"; then
+		pr_err "\"$1\" is not a valid device node"
+		exit 1
+	fi
+	BSIZE=$(dumpe2fs -h $1 | grep "Block size:" | cut -d ':' -f 2)
+	BLOCKS=$(dumpe2fs -h $1 | grep "Block count:" | cut -d ':' -f 2)
+
+	echo $(expr $BSIZE \* $BLOCKS)
+}
+
+# reduce_ext4_lv
+# Params:
+# $1 - LV device node
+# returns resized size of FS in 1Kbytes
+reduce_ext4_lv()
+{
+	if ! test -b "$1"; then
+		pr_err "\"$1\" is not a valid device file"
+		exit 1
+	fi
+	local LV="$1"
+	local SIZE=""
+
+	e2fsck -f "$LV"
+	if ! resize2fs -fM "$LV"; then
+		pr_err "Failed to resize file system"
+		exit 1
+	fi
+
+	SIZE=$(get_ext4_size "$LV")
+
+	# don't error out if the size was already right...
+	lvm lvreduce -f -y -L "$SIZE"B "$LV" || true
+	echo "$SIZE"
+}
+
+
+lv2luks()
+{
+	local OLD=$(mktemp -d)
+	local NEW=$(mktemp -d)
+	local TRANSFERRED=""
+
+	# Trim the source LV and fs
+	reduce_ext4_lv "$SRCLVPATH"
+
+	# create temp LV
+	lvm lvcreate -l 100%FREE -n "$TEMPLV" "$SRCVG"
+
+	# Create the LUKS header and open it to device mapper
+	printf "%s" $PASSPHRASE | cryptsetup luksFormat "$TEMPLVPATH" -
+	printf "%s" $PASSPHRASE | cryptsetup luksOpen "$TEMPLVPATH" "$CRYPTONAME" -
+
+	mkfs.ext4 -q "$CRYPTODEV"
+
+	mount "$SRCLVPATH" "$OLD"
+	mount "$CRYPTODEV" "$NEW"
+
+
+	# Consider list based file-by-file copy instead here
+	while test "x$TRANSFERRED" != "x0"; do
+		TRANSFERRED=$(rsync -a --remove-source-files --append --inplace --stats "$OLD"/* "$NEW" | grep "Number of regular files transferred:" | cut -d ':' -f 2)
+
+		# Resize devices after copy
+		umount "$OLD"
+		umount "$NEW"
+		reduce_ext4_lv "$SRCLVPATH"
+		lvm lvextend -l +100%FREE "$TEMPLVPATH" || true
+		cryptsetup resize "$CRYPTONAME"
+		e2fsck -f "$CRYPTODEV"
+		resize2fs "$CRYPTODEV"
+		mount "$SRCLVPATH" "$OLD"
+		mount "$CRYPTODEV" "$NEW"
+		echo "transferred \"$TRANSFERRED\""
+	done
+
+	# Clean up
+	/usr/bin/find "$OLD" -type d -empty -delete
+
+	# Remove the old empty LV
+	umount "$OLD"
+	lvm lvremove -f -y "$SRCLVPATH"
+
+	umount "$NEW"
+
+	# TODO: Replace the last extend with something that keeps original
+	# reserved VG space stil un-allocated
+	lvm lvextend -l +100%FREE "$TEMPLVPATH" || true
+	cryptsetup resize "$CRYPTONAME"
+	e2fsck -f "$CRYPTODEV"
+	resize2fs "$CRYPTODEV"
+
+	# Rename the new temporary LV as the SRC LV
+	lvm lvrename -y "$SRCVG" "$TEMPLV" "$SRCLV"
+
+	rm -rf "$OLD" "$NEW"
+	cryptsetup luksClose "$CRYPTONAME"
+
+	echo "$SRCLVPATH successfully converted to LUKS"
+}
+
+while getopts "p:rh" opt; do
+	case $opt in
+	p)
+		if test -z "$OPTARG"; then
+			pr_err "Given pass phrase is empty!"
+			print_help
+			exit 1
+		fi
+		PASSPHRASE="$OPTARG"
+	;;
+	r)
+		# Please implement reverse operation here...
+		exit 0
+	;;
+	h)
+		print_help
+		exit 0
+	;;
+	\?)
+		pr_err "Invalid option: -$OPTARG"
+		print_help
+		exit 1
+	;;
+	:)
+		print_help
+		exit 1
+	;;
+
+	esac
+done
+
+shift $(($OPTIND -1))
+
+fill_lvm_params "$1"
+
+lv2luks
+
+
