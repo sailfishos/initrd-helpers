@@ -25,6 +25,8 @@
 
 ROOTDEV="/dev/sailfish/root"
 HOMEDEV="/dev/sailfish/home"
+ROOTIMG="root.img.lzo"
+HOMEIMG="home.img.lzo"
 NAME=$0
 
 flash_script()
@@ -93,23 +95,35 @@ fi
 
 # Find the biggest versioned Sailfish folder and use that
 SAILFISH_FIMAGE=$(ls -d $FIMAGE_MOUNT/Sailfish* | tail -1)
+WORKDIR=$(pwd)
 
 if test -z $SAILFISH_FIMAGE; then
 	echo "$NAME: Error: Could not find a recovery image folder!" > /dev/kmsg
 	exit 1
 fi
 
-if ! test -f $SAILFISH_FIMAGE/sailfish_root.squashfs.img; then
+# Check that the factory images are ok to use.
+cd $SAILFISH_FIMAGE
+if test -f $ROOTIMG; then
+	if ! md5sum -c $ROOTIMG.md5 > /dev/kmsg; then
+		echo "$NAME: Error: root recovery image corrupted!" > /dev/kmsg
+		exit 1
+	fi
+else
 	echo "$NAME: Error: cannot find sailfish root recovery image!" > /dev/kmsg
 	exit 1
 fi
 
-if ! test -f $SAILFISH_FIMAGE/sailfish_home.squashfs.img; then
+if test -f $HOMEIMG; then
+	if ! md5sum -c $HOMEIMG.md5 > /dev/kmsg; then
+		echo "$NAME: Error: home recovery image corrupted!" > /dev/kmsg
+		exit 1
+	fi
+else
 	echo "$NAME: Error: cannot find sailfish home recovery image!" > /dev/kmsg
 	exit 1
 fi
-
-MOUNT_POINT=$(mktemp -d)
+cd $WORKDIR
 
 # Clean up old LVM if it happens to exist
 lvm vgchange -a n
@@ -147,33 +161,25 @@ fi
 # Create home LV
 lvm lvcreate -L "$HOME_SIZE"K --name home sailfish
 
-# Create filesystems
-mkfs.ext4 $ROOTDEV
-mkfs.ext4 $HOMEDEV
-
 # Start restoring Sailfish OS from the factory images
-mount $ROOTDEV $MOUNT_POINT
-mkdir -p $MOUNT_POINT/home
-mount $HOMEDEV $MOUNT_POINT/home
-TEMPMOUNT=$(mktemp -d)
 
-mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_root.squashfs.img $TEMPMOUNT
-cp -a $TEMPMOUNT/* $MOUNT_POINT
+lzopcat $SAILFISH_FIMAGE/$ROOTIMG > $ROOTDEV
+lzopcat $SAILFISH_FIMAGE/$HOMEIMG > $HOMEDEV
 sync
-umount $TEMPMOUNT
-mount -t squashfs -o loop $SAILFISH_FIMAGE/sailfish_home.squashfs.img $TEMPMOUNT
-cp -a $TEMPMOUNT/* $MOUNT_POINT/home
+
+resize2fs -f $ROOTDEV
+resize2fs -f $HOMEDEV
+
 sync
-umount $TEMPMOUNT
-rmdir $TEMPMOUNT
 
 # Flash firmwares from the resetted root
-flash_firmwares $MOUNT_POINT
+TEMPMOUNT=$(mktemp -d)
+mount $ROOTDEV $TEMPMOUNT
+flash_firmwares $TEMPMOUNT
 
 # Clean up
-umount $MOUNT_POINT/home
-umount $MOUNT_POINT
-rmdir $MOUNT_POINT
+umount $TEMPMOUNT
+rmdir $TEMPMOUNT
 
 umount $FIMAGE_MOUNT
 rmdir $FIMAGE_MOUNT
