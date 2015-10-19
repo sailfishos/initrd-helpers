@@ -29,6 +29,11 @@ ROOTIMG="root.img.lzo"
 HOMEIMG="home.img.lzo"
 NAME=$0
 
+PHYSDEV_PART_LABEL="sailfish"
+FIMAGE_PART_LABEL="fimage"
+# From https://github.com/mer-hybris/hybris-initrd
+. /etc/sysconfig/partitions
+
 flash_script()
 {
 cat << 'EOF'
@@ -72,13 +77,13 @@ RESERVE_KB=$(expr $2 \* 1024)
 
 echo "$NAME: Starting factory reset.." > /dev/kmsg
 
-PHYSDEV=$(find-mmc-bypartlabel "sailfish")
+PHYSDEV=$(find-mmc-bypartlabel "$PHYSDEV_PART_LABEL")
 if test $? != "0"; then
 	echo "$NAME: Error: could not find sailfish partition" > /dev/kmsg
 	exit 1
 fi
 
-FIMAGE_DEV_PATH=$(find-mmc-bypartlabel "fimage")
+FIMAGE_DEV_PATH=$(find-mmc-bypartlabel "$FIMAGE_PART_LABEL")
 if test $? != "0"; then
 	echo "$NAME: Error: could not find fimage partition" > /dev/kmsg
 	exit 1
