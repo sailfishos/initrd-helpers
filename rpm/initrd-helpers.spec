@@ -8,6 +8,7 @@ Source0:    %{name}-%{version}.tar.gz
 
 Requires:  btrfs-progs
 Requires:  e2fsprogs
+Requires:  pigz
 
 %description
 %{summary}

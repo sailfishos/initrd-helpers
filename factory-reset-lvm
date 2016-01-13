@@ -25,8 +25,8 @@
 
 ROOTDEV="/dev/sailfish/root"
 HOMEDEV="/dev/sailfish/home"
-ROOTIMG="root.img.lzo"
-HOMEIMG="home.img.lzo"
+ROOTIMG="root.img"
+HOMEIMG="home.img"
 NAME=$0
 
 PHYSDEV_PART_LABEL="sailfish"
@@ -107,27 +107,39 @@ if test -z $SAILFISH_FIMAGE; then
 	exit 1
 fi
 
-# Check that the factory images are ok to use.
+# Check that the factory images are ok to use and detect compression method.
 cd $SAILFISH_FIMAGE
-if test -f $ROOTIMG; then
-	if ! md5sum -c $ROOTIMG.md5 > /dev/kmsg; then
-		echo "$NAME: Error: root recovery image corrupted!" > /dev/kmsg
-		exit 1
-	fi
+if test -f $ROOTIMG.lzo && test -f $HOMEIMG.lzo; then
+	ROOTIMG="$ROOTIMG.lzo"
+	HOMEIMG="$HOMEIMG.lzo"
+	DECOMPRESS_CMD="lzopcat"
+elif test -f $ROOTIMG.gz && test -f $HOMEIMG.gz; then
+	ROOTIMG="$ROOTIMG.gz"
+	HOMEIMG="$HOMEIMG.gz"
+	DECOMPRESS_CMD="pigz -d -c"
+elif test -f $ROOTIMG.bz2 && test -f $HOMEIMG.bz2; then
+	ROOTIMG="$ROOTIMG.bz2"
+	HOMEIMG="$HOMEIMG.bz2"
+	DECOMPRESS_CMD="bzip2 -d -c"
+elif test -f $ROOTIMG.xz && test -f $HOMEIMG.xz; then
+	ROOTIMG="$ROOTIMG.xz"
+	HOMEIMG="$HOMEIMG.xz"
+	DECOMPRESS_CMD="xz -d -c"
 else
-	echo "$NAME: Error: cannot find sailfish root recovery image!" > /dev/kmsg
+	echo "$NAME: Error: cannot find sailfish recovery image!" > /dev/kmsg
 	exit 1
 fi
 
-if test -f $HOMEIMG; then
-	if ! md5sum -c $HOMEIMG.md5 > /dev/kmsg; then
-		echo "$NAME: Error: home recovery image corrupted!" > /dev/kmsg
-		exit 1
-	fi
-else
-	echo "$NAME: Error: cannot find sailfish home recovery image!" > /dev/kmsg
+if ! md5sum -c $ROOTIMG.md5 > /dev/kmsg; then
+	echo "$NAME: Error: root recovery image corrupted!" > /dev/kmsg
 	exit 1
 fi
+
+if ! md5sum -c $HOMEIMG.md5 > /dev/kmsg; then
+	echo "$NAME: Error: home recovery image corrupted!" > /dev/kmsg
+	exit 1
+fi
+
 cd $WORKDIR
 
 # Clean up old LVM if it happens to exist
@@ -167,9 +179,8 @@ fi
 lvm lvcreate -L "$HOME_SIZE"K --name home sailfish
 
 # Start restoring Sailfish OS from the factory images
-
-lzopcat $SAILFISH_FIMAGE/$ROOTIMG > $ROOTDEV
-lzopcat $SAILFISH_FIMAGE/$HOMEIMG > $HOMEDEV
+$DECOMPRESS_CMD $SAILFISH_FIMAGE/$ROOTIMG > $ROOTDEV
+$DECOMPRESS_CMD $SAILFISH_FIMAGE/$HOMEIMG > $HOMEDEV
 sync
 
 resize2fs -f $ROOTDEV
