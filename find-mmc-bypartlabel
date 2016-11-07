@@ -30,6 +30,16 @@ if ! test -d /sys/class/block; then
 	exit 1
 fi
 
+while [ ! -d /sys/class/block/mmcblk0p* ]; do
+    echo "find-mmc-bypartlabel: Waiting for /sys/class/block/mmcblk0p*..." > /dev/kmsg
+    (( i++ ))
+    sleep 0.5
+    if [ $i == 10 ]; then
+        echo "find-mmc-bypartlabel: Error: timeout waiting for /sys/class/block/mmcblk0p*" > /dev/kmsg
+        exit 1
+    fi
+done
+
 for mmc_sysfs in $(ls -d /sys/class/block/mmcblk0p*); do
 	if cat $mmc_sysfs/uevent | grep -w PARTNAME=$1 > /dev/null; then
 		FIMAGE_DEV_NAME=$(echo $mmc_sysfs | cut -d "/" -f 5)
@@ -40,3 +50,4 @@ done
 
 echo "$0: Error, could not find partition label \"$1\"" > /dev/kmsg
 exit 1
+
