@@ -147,6 +147,10 @@ lvm vgchange -a n
 lvm vgremove -y sailfish
 lvm pvremove -y $PHYSDEV
 
+if test "$SAILFISHOS_WIPE_PARTITIONS" = "1"; then
+	dd if=/dev/zero of=$PHYSDEV bs=1M
+fi
+
 # Create the LVM setup
 if ! lvm pvcreate $PHYSDEV; then
 	echo "$NAME: Error, could create LVM physical device for $PHYSDEV" > /dev/kmsg
