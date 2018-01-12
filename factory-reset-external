@@ -40,6 +40,20 @@ for device in $@; do
 		continue
 	fi
 
+	partitionname=$( basename $device )
+	partitionblock=$( readlink -f /sys/class/block/$partitionname )
+
+	if [ ! -e "$partitionblock" ]; then
+		continue
+	fi
+
+	deviceblock=$( dirname "$partitionblock" )
+
+	if ! grep -Fxq SD $deviceblock/device/type; then
+		log "$device is not an SD-card! Skipping"
+		continue
+	fi
+
 	eval "$(/sbin/blkid -c /dev/null -o export $device)"
 
 	case "$TYPE" in
@@ -117,10 +131,11 @@ if mount /dev/sailfish/root $TEMPMOUNT; then
 	mount -t tmpfs tmpfs $TEMPMOUNT/tmp
 	mount -t devtmpfs devtmpfs $TEMPMOUNT/dev
 	mount -t proc proc $TEMPMOUNT/proc
+	mount -t sysfs sys $TEMPMOUNT/sys
 	format_script > $TEMPMOUNT/tmp/format-devices
 	chmod 755 $TEMPMOUNT/tmp/format-devices
 	chroot $TEMPMOUNT /tmp/format-devices $@
-	umount $TEMPMOUNT/tmp $TEMPMOUNT/dev $TEMPMOUNT/proc
+	umount $TEMPMOUNT/tmp $TEMPMOUNT/dev $TEMPMOUNT/proc $TEMPMOUNT/sys
 
 	# Clean up
 	umount $TEMPMOUNT
