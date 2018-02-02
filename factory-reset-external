@@ -1,0 +1,151 @@
+#!/bin/sh
+#
+# External storage factory reset for Sailfish OS.
+#
+# Copyright (C) 2017 Jolla Ltd.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2
+# of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+# Parameters:
+# $@ -> Device paths of partitions to reformat.
+
+format_script()
+{
+cat << 'EOF'
+#!/bin/sh
+
+function log
+{
+	echo "$0: $1" > /dev/kmsg
+}
+
+for device in $@; do
+	unset TYPE
+	unset LABEL
+	unset UUID
+
+	if [ ! -e "$device" ]; then
+		continue
+	fi
+
+	partitionname=$( basename $device )
+	partitionblock=$( readlink -f /sys/class/block/$partitionname )
+
+	if [ ! -e "$partitionblock" ]; then
+		continue
+	fi
+
+	deviceblock=$( dirname "$partitionblock" )
+
+	if ! grep -Fxq SD $deviceblock/device/type; then
+		log "$device is not an SD-card! Skipping"
+		continue
+	fi
+
+	eval "$(/sbin/blkid -c /dev/null -o export $device)"
+
+	case "$TYPE" in
+		vfat)
+			format_command=/sbin/mkfs.vfat
+			format_arguments=()
+			if [ ! -z "$UUID" ]; then
+				format_arguments=( "${format_arguments[@]}" -i "${UUID//-}" )
+			fi
+			if [ ! -z "$LABEL" ]; then
+				format_arguments=( "${format_arguments[@]}" -n "${LABEL}" )
+			fi
+			;;
+		ext4)
+			format_command=/sbin/mkfs.ext4
+			format_arguments=( -F -E root_owner=100000:100000 )
+			if [ ! -z "$UUID" ]; then
+				format_arguments=( "${format_arguments[@]}" -U "${UUID}" )
+			fi
+			if [ ! -z "$LABEL" ]; then
+				format_arguments=( "${format_arguments[@]}" -L "${LABEL}")
+			fi
+			;;
+		*)
+			if [ -z "$TYPE" ]; then
+				continue
+			fi
+
+			format_command=
+			format_arguments=
+			;;
+	esac
+
+	if [ -f $format_command ]; then
+		log "Formatting $device as $TYPE"
+
+		if test "$SAILFISHOS_WIPE_PARTITIONS" = "1"; then
+			dd if=/dev/zero of=$device bs=1M
+		fi
+
+		echo $format_command "${format_arguments[@]}" $device
+		$format_command "${format_arguments[@]}" $device || log "Failed to format $device"
+	else
+		TEMPMOUNT=$(mktemp -d)
+
+		if mount $device $TEMPMOUNT; then
+			log "Erasing data from $device"
+
+			find $TEMPMOUNT -mindepth 1 -delete
+
+			if test "$SAILFISHOS_WIPE_PARTITIONS" = "1"; then
+				dd if=/dev/zero of=$TEMPMOUNT/large
+				rm -f $TEMPMOUNT/large
+			fi
+
+			umount $TEMPMOUNT
+		else
+			log "Failed to mount $device to erase data"
+
+			if test "$SAILFISHOS_WIPE_PARTITIONS" = "1"; then
+				log "Erasing partition"
+				dd if=/dev/zero of=$device
+			fi
+		fi
+
+		rmdir $TEMPMOUNT
+	fi
+done
+EOF
+}
+
+# Format devices from the rootfs where there is a full shell and more file-system tools.
+TEMPMOUNT=$(mktemp -d)
+if mount /dev/sailfish/root $TEMPMOUNT; then
+	mount -t tmpfs tmpfs $TEMPMOUNT/tmp
+	mount -t devtmpfs devtmpfs $TEMPMOUNT/dev
+	mount -t proc proc $TEMPMOUNT/proc
+	mount -t sysfs sys $TEMPMOUNT/sys
+	format_script > $TEMPMOUNT/tmp/format-devices
+	chmod 755 $TEMPMOUNT/tmp/format-devices
+	chroot $TEMPMOUNT /tmp/format-devices $@
+	umount $TEMPMOUNT/tmp $TEMPMOUNT/dev $TEMPMOUNT/proc $TEMPMOUNT/sys
+
+	# Clean up
+	umount $TEMPMOUNT
+else
+	echo "$0: Failed to mount rootfs" > /dev/kmsg
+	if test "$SAILFISH_WIPE_PARTITIONS" = "$1"; then
+		for device in $@; do
+			dd if=/dev/zero of=$device
+		done
+	fi
+fi
+rmdir $TEMPMOUNT
+
