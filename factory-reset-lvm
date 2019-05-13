@@ -180,7 +180,7 @@ if test $HOME_SIZE -le 65536; then
 fi
 
 # Create home LV
-lvm lvcreate -L "$HOME_SIZE"K --name home sailfish
+lvm lvcreate -y -L "$HOME_SIZE"K --name home sailfish
 
 # Start restoring Sailfish OS from the factory images
 $DECOMPRESS_CMD $SAILFISH_FIMAGE/$ROOTIMG > $ROOTDEV
