@@ -98,8 +98,9 @@ if ! mount "$FIMAGE_DEV_PATH" "$FIMAGE_MOUNT"; then
 	exit 1
 fi
 
-# Find the biggest versioned Sailfish folder and use that
-SAILFISH_FIMAGE=$(ls -d $FIMAGE_MOUNT/Sailfish* | tail -1)
+# Find the highest versioned image directory and use that
+# Image directories must have version number separated by dashes
+SAILFISH_FIMAGE=$(ls -d1 $FIMAGE_MOUNT/*/ | grep -E '^'"$FIMAGE_MOUNT"'/.+-[0-9]+\.[0-9].*-.+/$' | tail -1)
 WORKDIR=$(pwd)
 
 if test -z $SAILFISH_FIMAGE; then
