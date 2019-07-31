@@ -37,8 +37,11 @@ Usage: factory-reset-lvm <root-size> <reserve-size>
        root-size       - size of root LV in MB
        reserve-size    - space in MB to be left unallocated for future use
 
-NOTE:  The script will need a "fimage" partition with /Sailfish-<version>/
-       folder that contains sailfish_root.squashfs.img and
-       sailfish_home.squashfs.img loop image files for root and home factory
-       content.
+NOTE:  The script will need a "fimage" partition with image directory that
+       contains root.img and home.img loop image files for root and home
+       factory content. Partition name may be overriden by configuration. Image
+       directory name must end with version and device information that are
+       separated by '-' character. Version must contain major and minor version
+       number. The partition may not include other similarly named directories
+       that could be mistaken as image directory.
 
