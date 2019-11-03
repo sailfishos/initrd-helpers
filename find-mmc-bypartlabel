@@ -32,9 +32,9 @@ fi
 
 while [ ! -d /sys/class/block/mmcblk0p* ]; do
     echo "find-mmc-bypartlabel: Waiting for /sys/class/block/mmcblk0p*..." > /dev/kmsg
-    (( i++ ))
+    i=$(( ${i:-0} + 1 ))
     sleep 0.5
-    if [ $i == 10 ]; then
+    if [ $i = 10 ]; then
         echo "find-mmc-bypartlabel: Error: timeout waiting for /sys/class/block/mmcblk0p*" > /dev/kmsg
         exit 1
     fi
