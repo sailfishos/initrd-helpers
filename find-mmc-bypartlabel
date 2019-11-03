@@ -20,12 +20,12 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 # Pass the partition label name as $1
-if test -z $1; then
+if [ -z "$1" ]; then
 	echo "$0: Error, no label name given!" > /dev/kmsg
 	exit 1
 fi
 
-if ! test -d /sys/class/block; then
+if [ ! -d /sys/class/block ]; then
 	echo "$0: Error, please mount sysfs" > /dev/kmsg
 	exit 1
 fi
