@@ -5,6 +5,7 @@ Release:    1
 Group:      System/Boot
 License:    GPLv2
 Source0:    %{name}-%{version}.tar.gz
+BuildArch:  noarch
 
 Requires:  btrfs-progs
 Requires:  e2fsprogs
