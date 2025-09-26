@@ -156,7 +156,7 @@ fi
 # Create the LVM setup
 if ! lvm pvcreate $PHYSDEV; then
 	echo "$NAME: Error, could create LVM physical device for $PHYSDEV" > /dev/kmsg
-	exit 1
+	exit 2
 fi
 
 # If the PV exists, creating VG should never fail
@@ -165,7 +165,7 @@ lvm vgcreate sailfish $PHYSDEV
 # Checking for errors to maybe catch wrong root size parameter
 if ! lvm lvcreate -L "$ROOT_SIZE"M --name root sailfish; then
 	echo "$NAME: Error, could create root LV" > /dev/kmsg
-	exit 1
+	exit 2
 fi
 
 
@@ -178,11 +178,14 @@ HOME_SIZE=$(expr $FREE_KB - $RESERVE_KB)
 # Check for too big reserve (not enough room left for home) case (1024kB * 64 = 64MB)
 if test $HOME_SIZE -le 65536; then
 	echo "$NAME: Error: too big reserve, not enough space for home" > /dev/kmsg
-	exit 1
+	exit 2
 fi
 
 # Create home LV
-lvm lvcreate -y -L "$HOME_SIZE"K --name home sailfish
+if ! lvm lvcreate -y -L "$HOME_SIZE"K --name home sailfish; then
+	echo "$NAME: Error, could create home LV" > /dev/kmsg
+	exit 2
+fi
 
 # Start restoring Sailfish OS from the factory images
 $DECOMPRESS_CMD $SAILFISH_FIMAGE/$ROOTIMG > $ROOTDEV
