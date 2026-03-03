@@ -1,6 +1,6 @@
 Name:       initrd-helpers
 Summary:    Helper scripts and tools for init ramdisks
-Version:    0.1.16
+Version:    0.1.17
 Release:    1
 Group:      System/Boot
 License:    GPLv2
