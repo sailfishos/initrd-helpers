@@ -63,6 +63,51 @@ flash_firmwares()
 	umount $1/tmp $1/dev $1/proc $1/sys
 }
 
+# Read the compressed image once: hash it while decompressing, and write
+# the restored filesystem in large blocks. The checksum is known only
+# after the write, so a mismatch still aborts before resize2fs.
+restore_image() {
+	img=$1
+	dev=$2
+	sumfile=$3
+
+	if ! test -f "$sumfile"; then
+		echo "$NAME: Error: checksum file missing for $img" > /dev/kmsg
+		exit 1
+	fi
+
+	expected=$(cut -d ' ' -f 1 "$sumfile")
+	fifo=$(mktemp -u)
+	statusfile=$(mktemp)
+	if ! mkfifo "$fifo"; then
+		echo "$NAME: Error: could not create pipe for $img" > /dev/kmsg
+		exit 1
+	fi
+
+	echo "$NAME: Restoring $img" > /dev/kmsg
+	(
+		set -o pipefail 2>/dev/null
+		$DECOMPRESS_CMD < "$fifo" | dd of="$dev" bs=4M iflag=fullblock 2>/dev/kmsg
+		echo $? > "$statusfile"
+	) &
+	writer=$!
+
+	actual=$(dd if="$img" bs=4M 2>/dev/kmsg | tee "$fifo" | md5sum | cut -d ' ' -f 1)
+	read_status=$?
+	wait $writer
+	write_status=$(cat "$statusfile" 2>/dev/null || echo 1)
+	rm -f "$fifo" "$statusfile"
+
+	if test "$read_status" != "0" || test "$write_status" != "0"; then
+		echo "$NAME: Error: restoring $img failed" > /dev/kmsg
+		exit 1
+	fi
+	if test "$actual" != "$expected"; then
+		echo "$NAME: Error: $img corrupted!" > /dev/kmsg
+		exit 1
+	fi
+}
+
 if test -z $1 || ! test $1 -ge 0; then
 	echo "$NAME: Please pass root size in MB as parameter!" > /dev/kmsg
 	exit 1
@@ -132,16 +177,6 @@ else
 	exit 1
 fi
 
-if ! md5sum -c $ROOTIMG.md5 > /dev/kmsg; then
-	echo "$NAME: Error: root recovery image corrupted!" > /dev/kmsg
-	exit 1
-fi
-
-if ! md5sum -c $HOMEIMG.md5 > /dev/kmsg; then
-	echo "$NAME: Error: home recovery image corrupted!" > /dev/kmsg
-	exit 1
-fi
-
 cd $WORKDIR
 
 # Clean up old LVM if it happens to exist
@@ -188,8 +223,8 @@ if ! lvm lvcreate -y -L "$HOME_SIZE"K --name home sailfish; then
 fi
 
 # Start restoring Sailfish OS from the factory images
-$DECOMPRESS_CMD $SAILFISH_FIMAGE/$ROOTIMG > $ROOTDEV
-$DECOMPRESS_CMD $SAILFISH_FIMAGE/$HOMEIMG > $HOMEDEV
+restore_image "$SAILFISH_FIMAGE/$ROOTIMG" "$ROOTDEV" "$SAILFISH_FIMAGE/$ROOTIMG.md5"
+restore_image "$SAILFISH_FIMAGE/$HOMEIMG" "$HOMEDEV" "$SAILFISH_FIMAGE/$HOMEIMG.md5"
 sync
 
 resize2fs -f $ROOTDEV
